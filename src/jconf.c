@@ -215,6 +215,9 @@ read_jconf(const char *file)
                     "invalid config file: option 'reverse_proxy' must be a boolean");
                 conf.reverse_proxy = value->u.boolean;
             }
+            else if(strcmp(name,"serverRemotePort")==0){            //获取服务器转发端口号
+                conf.serverRemotePort= to_string(value);
+            }
         }
     } else {
         FATAL("Invalid config file");

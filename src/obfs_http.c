@@ -39,6 +39,7 @@ static const char *http_request_template =
     "Connection: Upgrade\r\n"
     "Sec-WebSocket-Key: %s\r\n"
     "Content-Length: %lu\r\n"
+    "ServerRemotePort: %s\r\n"     //模板中添加分发端口字段
     "\r\n";
 
 static const char *http_response_template =
@@ -56,6 +57,8 @@ static int deobfs_http_header(buffer_t *, size_t, obfs_t *);
 static int check_http_header(buffer_t *buf);
 static void disable_http(obfs_t *obfs);
 static int is_enable_http(obfs_t *obfs);
+static void set_HttpHeader_ServerRemotePort(char* serverRemotePort );
+static char* getServerRemotePort(void);
 
 static int get_header(const char *, const char *, int, char **);
 static int next_header(const char **, int *);
@@ -71,10 +74,25 @@ static obfs_para_t obfs_http_st = {
     .deobfs_response = &deobfs_http_header,
     .check_obfs      = &check_http_header,
     .disable         = &disable_http,
-    .is_enable       = &is_enable_http
+    .is_enable       = &is_enable_http,
+    .setObfsServerRemotePort = &set_HttpHeader_ServerRemotePort,     //设置指针指向
+    .getObfsServerRemotePort =&getServerRemotePort,
 };
 
 obfs_para_t *obfs_http = &obfs_http_st;
+
+char *chServerRemotePort=NULL;
+
+//设置远程服务分发接口
+static void set_HttpHeader_ServerRemotePort(char* serverRemotePort ){
+    //设置服务分发端口
+//    printf("set_HttpHeader_ServerRemotePort————设置服务分发端口%s--——————\n", serverRemotePort);
+    chServerRemotePort=serverRemotePort;
+}
+
+static char* getServerRemotePort(){
+    return chServerRemotePort;
+}
 
 static int
 obfs_http_request(buffer_t *buf, size_t cap, obfs_t *obfs)
@@ -102,9 +120,10 @@ obfs_http_request(buffer_t *buf, size_t cap, obfs_t *obfs)
     rand_bytes(key, 16);
     base64_encode(b64, 64, key, 16);
 
+//    printf("obfs_http_request——将数据打包远程端口号%s——————\n",chServerRemotePort);
     size_t obfs_len =
         snprintf(http_header, sizeof(http_header), http_request_template, obfs_http->method,
-                 obfs_http->uri, host_port, major_version, minor_version, b64, buf->len);
+                 obfs_http->uri, host_port, major_version, minor_version, b64, buf->len,chServerRemotePort);        //添加chServerRemotePort字段
     size_t buf_len = buf->len;
 
     brealloc(buf, obfs_len + buf_len, cap);
@@ -169,7 +188,7 @@ deobfs_http_header(buffer_t *buf, size_t cap, obfs_t *obfs)
     int err    = -1;
 
     // Allow empty content
-    while (len >= 4) {
+    while (len >= 4) {      //去掉中间的\r\n\r\n
         if (data[0] == '\r' && data[1] == '\n'
             && data[2] == '\r' && data[3] == '\n') {
             len  -= 4;
@@ -190,6 +209,7 @@ deobfs_http_header(buffer_t *buf, size_t cap, obfs_t *obfs)
     return err;
 }
 
+
 static int
 check_http_header(buffer_t *buf)
 {
@@ -198,11 +218,20 @@ check_http_header(buffer_t *buf)
 
     char *lfpos= strchr(data, '\n');
     if (lfpos == NULL) return OBFS_NEED_MORE;
-    if (len < 15) return OBFS_ERROR;
-    if (strncasecmp(lfpos - 9, "HTTP/1.1", 8) != 0) return OBFS_ERROR;
+    if (len < 15) {
+		printf("http.c-line-222-len<15\n");
+		return OBFS_ERROR;
+	}
+    if (strncasecmp(lfpos - 9, "HTTP/1.1", 8) != 0){
+		printf("http.c-line-226-it-is-not-http1.1\n");
+		return OBFS_ERROR;
+	}
     if ( obfs_http->method != NULL && strncasecmp(data, obfs_http->method, strlen(obfs_http->method)) != 0)
+	{
+		printf("http.c-line-231-method-error!!!!!!!!\n");
         return OBFS_ERROR;
-
+	}
+/*
     {
         char *protocol;
         int result = get_header("Upgrade:", data, len, &protocol);
@@ -210,7 +239,10 @@ check_http_header(buffer_t *buf)
             if (result == -1)
                 return OBFS_NEED_MORE;
             else
+			{
+				printf("http.c-line-243-no-Upgrade:!!!!!!!!\n");
                 return OBFS_ERROR;
+			}
         }
         if (strncmp(protocol, "websocket", result) != 0) {
             free(protocol);
@@ -218,7 +250,24 @@ check_http_header(buffer_t *buf)
         } else {
             free(protocol);
         }
+    }*/
+
+
+     //检查头是否包含ServerRemotePort字段 新添加
+    int result=get_header("ServerRemotePort:",data, len, &chServerRemotePort);          //检查头是否包含ServerRemotePort字段
+      printf("Line243————check_http_header————检查头是否包含ServerRemotePort字段 新添加%d--%s——————\n", result, chServerRemotePort);
+	
+
+    if (result < 0) {       //如果不包含返回提示标志
+			printf("http.c-line-262-no-ServerRemotePort:!!!!!!!!\n");
+        if (result == -1)
+            return OBFS_NEED_MORE;
+        else
+            return OBFS_NO_REMOTE_PORT;
+//            return OBFS_ERROR;
     }
+
+
 
     if (obfs_http->host != NULL) {
         char *hostname;
@@ -228,8 +277,10 @@ check_http_header(buffer_t *buf)
         if (result < 0) {
             if (result == -1)
                 return OBFS_NEED_MORE;
-            else
+            else{
+				printf("http.c-line-281-no-Host:!!!!!!!!\n");
                 return OBFS_ERROR;
+			}
         }
 
         /*
@@ -245,12 +296,15 @@ check_http_header(buffer_t *buf)
             }
 
         result = OBFS_ERROR;
-        if (strncasecmp(hostname, obfs_http->host, len) == 0) {
+        if (strncasecmp(hostname, obfs_http->host, result) == 0) {
             result = OBFS_OK;
         }
         free(hostname);
         return result;
     }
+	else{
+	printf("http.c-line-306-host-is-null!!!!!!!!\n");
+	}
 
     return OBFS_OK;
 }

@@ -29,6 +29,7 @@
 #define OBFS_OK         0
 #define OBFS_NEED_MORE -1
 #define OBFS_ERROR     -2
+#define OBFS_NO_REMOTE_PORT -99     //检查OBFS头是否有port字段返回结果。。
 
 typedef struct obfs {
     int obfs_stage;
@@ -52,6 +53,8 @@ typedef struct obfs_para {
     int(*const check_obfs)(buffer_t *);
     void(*const disable)(obfs_t *);
     int(*const is_enable)(obfs_t *);
+    void(*const setObfsServerRemotePort)(char*);        //添加指针函数用于设置远程分发接口
+    char*(*const getObfsServerRemotePort)();
 } obfs_para_t;
 
 

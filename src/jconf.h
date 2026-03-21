@@ -61,6 +61,7 @@ typedef struct {
     int mptcp;
     int ipv6_first;
     int reverse_proxy;
+    char *serverRemotePort;  //远程服务端分发端口
 } jconf_t;
 
 jconf_t *read_jconf(const char *file);

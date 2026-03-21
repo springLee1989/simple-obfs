@@ -195,7 +195,7 @@ create_and_bind(const char *addr, const char *port)
     }
 
     freeaddrinfo(result);
-
+//    f("local.c--line198---create_and_bind————创建客户端TCP服务%s--%s——————\n",addr, port);
     return listen_sock;
 }
 
@@ -218,7 +218,7 @@ launch_or_create(const char *addr, const char *port)
          *          in the caller's launchd.plist(5).
          */
         if (port == NULL) {
-            usage();
+//            usage();
             exit(EXIT_FAILURE);
         }
         return create_and_bind(addr, port);
@@ -256,7 +256,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
         buf = remote->buf;
     }
 
-    r = recv(server->fd, buf->data + buf->len, BUF_SIZE - buf->len, 0);
+    r = recv(server->fd, buf->data + buf->len, BUF_SIZE - buf->len, 0);         //接收到ss-local请求数据
 
     if (r == 0) {
         // connection closed
@@ -279,6 +279,8 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
 
     buf->len += r;
 
+
+//   printf("server_recv_cb————进入循环监听TCP连接服务——————\n");
     while (1) {
         // local socks5 server
         if (server->stage == STAGE_STREAM) {
@@ -291,10 +293,12 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
 #ifdef ANDROID
             tx += remote->buf->len;
 #endif
-            if (obfs_para)
-                obfs_para->obfs_request(remote->buf, BUF_SIZE, server->obfs);
-
-            if (!remote->send_ctx->connected) {
+            if (obfs_para){
+//                 printf("server_recv_cb——while(1)——打包OBFS请求——————\n");
+                obfs_para->obfs_request(remote->buf, BUF_SIZE, server->obfs);       //打包OBFS请求
+}
+            if (!remote->send_ctx->connected) {     //如果obfs服务未连接
+//                 printf("Line301——如果obfs服务未连接——————\n");
 #ifdef ANDROID
                 if (vpn) {
                     int not_protect = 0;
@@ -317,8 +321,8 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
 
                 if (!fast_open) {
                     // connecting, wait until connected
-                    int r = connect(remote->fd, (struct sockaddr *)&(remote->addr), remote->addr_len);
-
+                    int r = connect(remote->fd, (struct sockaddr *)&(remote->addr), remote->addr_len);  //客户端发起连接
+//                    printf("Line325——如果obfs服务未连接—客户端发起连接—————\n");
                     if (r == -1 && errno != CONNECT_IN_PROGRESS) {
                         ERROR("connect");
                         close_and_free_remote(EV_A_ remote);
@@ -341,9 +345,9 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
 
                     int s = connectx(remote->fd, &endpoints, SAE_ASSOCID_ANY,
                                      CONNECT_RESUME_ON_READ_WRITE | CONNECT_DATA_IDEMPOTENT,
-                                     NULL, 0, NULL, NULL);
+                                     NULL, 0, NULL, NULL);       //客户端发起连接
                     if (s == 0) {
-                        s = send(remote->fd, remote->buf->data, remote->buf->len, 0);
+                        s = send(remote->fd, remote->buf->data, remote->buf->len, 0);  //发送至本地OBFS服务
                     }
 #elif defined(TCP_FASTOPEN_WINSOCK)
                     DWORD s = -1;
@@ -391,7 +395,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
                     }
 #else
                     int s = sendto(remote->fd, remote->buf->data, remote->buf->len, MSG_FASTOPEN,
-                                   (struct sockaddr *)&(remote->addr), remote->addr_len);
+                                   (struct sockaddr *)&(remote->addr), remote->addr_len);  //发送至本地OBFS服务
 #endif
                     if (s == -1) {
                         if (errno == CONNECT_IN_PROGRESS) {
@@ -441,7 +445,8 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
 #endif
                 }
             } else {
-                int s = send(remote->fd, remote->buf->data, remote->buf->len, 0);
+//                printf("Line447—如果已经连接—发送至本地OBFS服务-客户端——————\n");
+                int s = send(remote->fd, remote->buf->data, remote->buf->len, 0);   //发送至本地OBFS服务-客户端
                 if (s == -1) {
                     if (errno == EAGAIN || errno == EWOULDBLOCK) {
                         // no data, wait for send
@@ -470,11 +475,11 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
             // all processed
             return;
 
-        } else if (server->stage == STAGE_INIT) {
+        } else if (server->stage == STAGE_INIT) {       //当前处于初始化阶段
+//        printf("Lin479————当前处于初始化阶段——————\n");
+            server->stage = STAGE_STREAM;       //修改为数据数传输阶段
 
-            server->stage = STAGE_STREAM;
-
-            remote = create_remote(server->listener, NULL);
+            remote = create_remote(server->listener, NULL);            //创建OBFS服务-客户端socket 并绑定
 
             if (remote == NULL) {
                 LOGE("invalid remote addr");
@@ -483,7 +488,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
             }
 
             if (buf->len > 0) {
-                memcpy(remote->buf->data, buf->data, buf->len);
+                memcpy(remote->buf->data, buf->data, buf->len);     //拷贝数据
                 remote->buf->len = buf->len;
             }
 
@@ -557,7 +562,7 @@ remote_recv_cb(EV_P_ ev_io *w, int revents)
 
     ev_timer_again(EV_A_ & remote->recv_ctx->watcher);
 
-    ssize_t r = recv(remote->fd, server->buf->data, BUF_SIZE, 0);
+    ssize_t r = recv(remote->fd, server->buf->data, BUF_SIZE, 0);   //接收到OBFS服务发送的数据
 
     if (r == 0) {
         // connection closed
@@ -584,7 +589,7 @@ remote_recv_cb(EV_P_ ev_io *w, int revents)
         rx += server->buf->len;
 #endif
         if (obfs_para) {
-            if (obfs_para->deobfs_response(server->buf, BUF_SIZE, server->obfs)) {
+            if (obfs_para->deobfs_response(server->buf, BUF_SIZE, server->obfs)) {  //解析obfs数据
                 LOGE("invalid obfuscating");
                 close_and_free_remote(EV_A_ remote);
                 close_and_free_server(EV_A_ server);
@@ -593,7 +598,7 @@ remote_recv_cb(EV_P_ ev_io *w, int revents)
         }
     }
 
-    int s = send(server->fd, server->buf->data, server->buf->len, 0);
+    int s = send(server->fd, server->buf->data, server->buf->len, 0);   //发送到本地LOCAL TCP服务-ss-local
 
     if (s == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -694,7 +699,7 @@ remote_send_cb(EV_P_ ev_io *w, int revents)
     } else {
         // has data to send
         ssize_t s = send(remote->fd, remote->buf->data + remote->buf->idx,
-                         remote->buf->len, 0);
+                         remote->buf->len, 0);          //发送至OBFS服务
         if (s == -1) {
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 ERROR("remote_send_cb_send");
@@ -738,7 +743,7 @@ new_remote(int fd, int timeout)
     remote->recv_ctx->remote    = remote;
     remote->send_ctx->remote    = remote;
 
-    ev_io_init(&remote->recv_ctx->io, remote_recv_cb, fd, EV_READ);
+    ev_io_init(&remote->recv_ctx->io, remote_recv_cb, fd, EV_READ);     //监听
     ev_io_init(&remote->send_ctx->io, remote_send_cb, fd, EV_WRITE);
     ev_timer_init(&remote->send_ctx->watcher, remote_timeout_cb,
                   min(MAX_CONNECT_TIMEOUT, timeout), 0);
@@ -802,8 +807,8 @@ new_server(int fd)
         memset(server->obfs, 0, sizeof(obfs_t));
     }
 
-    ev_io_init(&server->recv_ctx->io, server_recv_cb, fd, EV_READ);
-    ev_io_init(&server->send_ctx->io, server_send_cb, fd, EV_WRITE);
+    ev_io_init(&server->recv_ctx->io, server_recv_cb, fd, EV_READ);     //注册接收绑定到watcher
+    ev_io_init(&server->send_ctx->io, server_send_cb, fd, EV_WRITE);    //注册发送
 
     cork_dllist_add(&connections, &server->entries);
 
@@ -850,14 +855,14 @@ create_remote(listen_ctx_t *listener,
 {
     struct sockaddr *remote_addr;
 
-    int index = rand() % listener->remote_num;
+    int index = rand() % listener->remote_num;          //
     if (addr == NULL) {
         remote_addr = listener->remote_addr[index];
     } else {
         remote_addr = addr;
     }
 
-    int remotefd = socket(remote_addr->sa_family, SOCK_STREAM, IPPROTO_TCP);
+    int remotefd = socket(remote_addr->sa_family, SOCK_STREAM, IPPROTO_TCP);    //创建REMOTE socket
 
     if (remotefd == -1) {
         ERROR("socket");
@@ -889,7 +894,7 @@ create_remote(listen_ctx_t *listener,
     remote_t *remote = new_remote(remotefd, listener->timeout);
     remote->addr_len = get_sockaddr_len(remote_addr);
     memcpy(&(remote->addr), remote_addr, remote->addr_len);
-
+//    printf("Line897---create_remote——创建OBFS服务-客户端socket————\n");
     return remote;
 }
 
@@ -924,11 +929,11 @@ accept_cb(EV_P_ ev_io *w, int revents)
 #ifdef SO_NOSIGPIPE
     setsockopt(serverfd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
 #endif
-
-    server_t *server = new_server(serverfd);
+//    printf("accept_cb——————ACCEPT请求新建一个server\n");
+    server_t *server = new_server(serverfd);            //每收到一个ss-local的ACCEPT请求新建一个server
     server->listener = listener;
 
-    ev_io_start(EV_A_ & server->recv_ctx->io);
+    ev_io_start(EV_A_ & server->recv_ctx->io);  //将已经初始化好的watcher绑定到事件监听主循环
 }
 
 int
@@ -938,8 +943,8 @@ main(int argc, char **argv)
     int pid_flags    = 0;
     int mptcp        = 0;
     char *user       = NULL;
-    char *local_port = NULL;
-    char *local_addr = NULL;
+    char *local_port = NULL;        //本地TCP端口
+    char *local_addr = NULL;        //本地TCP地址
     char *timeout    = NULL;
     char *pid_path   = NULL;
     char *conf_path  = NULL;
@@ -947,6 +952,7 @@ main(int argc, char **argv)
     char *obfs_host  = NULL;
     char *obfs_uri   = NULL;
     char *http_method= NULL;
+    char *serverRemotePort=NULL;     //添加服务分发端口
 
     srand(time(NULL));
 
@@ -1062,10 +1068,10 @@ main(int argc, char **argv)
     USE_TTY();
 
 #ifdef ANDROID
-    while ((c = getopt_long(argc, argv, "f:s:p:l:t:i:c:b:a:n:hvV6",
+    while ((c = getopt_long(argc, argv, "f:s:p:l:t:i:c:b:a:d:n:hvV6",
                             long_options, &option_index)) != -1) {
 #else
-    while ((c = getopt_long(argc, argv, "f:s:p:l:t:i:c:b:a:n:hv6",
+    while ((c = getopt_long(argc, argv, "f:s:p:l:t:i:c:b:a:d:n:hv6",
                             long_options, &option_index)) != -1) {
 #endif
         switch (c) {
@@ -1087,7 +1093,7 @@ main(int argc, char **argv)
             } else if (option_index == 5) {
                 http_method = optarg;
             } else if (option_index == 6) {
-                usage();
+//                usage();
                 exit(EXIT_SUCCESS);
             }
             break;
@@ -1098,10 +1104,10 @@ main(int argc, char **argv)
             }
             break;
         case 'p':
-            remote_port = optarg;
+            remote_port = optarg;       //远程连接，与服务器OBFS通信端口
             break;
         case 'l':
-            local_port = optarg;
+            local_port = optarg;        //绑定的本地端口
             break;
         case 'f':
             pid_flags = 1;
@@ -1122,6 +1128,10 @@ main(int argc, char **argv)
         case 'a':
             user = optarg;
             break;
+        case 'd':
+            serverRemotePort=optarg;        //获取命令行端口参数
+//            printf("Local.c-Line1133-d————输入远程服务转发的目的端口号————————%s\n",serverRemotePort);
+            break;
 #ifdef HAVE_SETRLIMIT
         case 'n':
             nofile = atoi(optarg);
@@ -1131,7 +1141,7 @@ main(int argc, char **argv)
             verbose = 1;
             break;
         case 'h':
-            usage();
+//            usage();
             exit(EXIT_SUCCESS);
         case '6':
             ipv6first = 1;
@@ -1150,7 +1160,7 @@ main(int argc, char **argv)
     }
 
     if (opterr) {
-        usage();
+//        usage();
         exit(EXIT_FAILURE);
     }
 
@@ -1162,13 +1172,13 @@ main(int argc, char **argv)
                 remote_addr[i] = conf->remote_addr[i];
         }
         if (remote_port == NULL) {
-            remote_port = conf->remote_port;
+            remote_port = conf->remote_port;        //OBFS端口
         }
         if (local_addr == NULL) {
             local_addr = conf->local_addr;
         }
         if (local_port == NULL) {
-            local_port = conf->local_port;
+            local_port = conf->local_port;          //本地端口
         }
         if (timeout == NULL) {
             timeout = conf->timeout;
@@ -1197,6 +1207,10 @@ main(int argc, char **argv)
         if (mptcp == 0) {
             mptcp = conf->mptcp;
         }
+        if(serverRemotePort == NULL){               //获取服务分发端口
+            serverRemotePort=conf->serverRemotePort;
+//            printf("JSON文件设置————远程服务转发的目的端口号————————%s\n",serverRemotePort);
+        }
 #ifdef HAVE_SETRLIMIT
         if (nofile == 0) {
             nofile = conf->nofile;
@@ -1209,7 +1223,7 @@ main(int argc, char **argv)
         local_port == NULL ||
 #endif
         obfs_para == NULL) {
-        usage();
+//        usage();
         exit(EXIT_FAILURE);
     }
 
@@ -1253,15 +1267,20 @@ main(int argc, char **argv)
     }
 
     if (obfs_para) {
-        if (obfs_host != NULL)
+        if(serverRemotePort!=NULL){
+
+            obfs_para->setObfsServerRemotePort(serverRemotePort);       //设置服务分发端口
+        }
+        if (obfs_host != NULL){
             obfs_para->host = obfs_host;
+        }
         else
             obfs_para->host = "cloudfront.net";
         if (obfs_uri == NULL) obfs_para->uri = "/";
         else obfs_para->uri = obfs_uri;
         if (http_method == NULL) obfs_para->method = "GET";
         else obfs_para->method = http_method;
-        obfs_para->port = atoi(remote_port);
+        obfs_para->port = atoi(remote_port);   //服务器OBFS端口
         LOGI("obfuscating enabled");
         LOGI("obfuscation http method: %s", obfs_para->method);
         if (obfs_host)
@@ -1282,7 +1301,7 @@ main(int argc, char **argv)
     listen_ctx.remote_num  = remote_num;
     listen_ctx.remote_addr = ss_malloc(sizeof(struct sockaddr *) * remote_num);
     memset(listen_ctx.remote_addr, 0, sizeof(struct sockaddr *) * remote_num);
-    for (i = 0; i < remote_num; i++) {
+    for (i = 0; i < remote_num; i++) {                  //根据配置数据创建多个obfs服务SOCKET对象
         char *host = remote_addr[i].host;
         char *port = remote_addr[i].port == NULL ? remote_port :
                      remote_addr[i].port;
@@ -1318,7 +1337,7 @@ main(int argc, char **argv)
 #ifdef HAVE_LAUNCHD
     listenfd = launch_or_create(local_addr, local_port);
 #else
-    listenfd = create_and_bind(local_addr, local_port);
+    listenfd = create_and_bind(local_addr, local_port);         //创建本地TCP服务端SOCKET用于与OBFS通信
 #endif
     if (listenfd == -1) {
         FATAL("bind() error");
@@ -1328,10 +1347,10 @@ main(int argc, char **argv)
     }
     setnonblocking(listenfd);
 
-    listen_ctx.fd = listenfd;
+    listen_ctx.fd = listenfd;           //网络套接字
 
-    ev_io_init(&listen_ctx.io, accept_cb, listenfd, EV_READ);
-    ev_io_start(loop, &listen_ctx.io);
+    ev_io_init(&listen_ctx.io, accept_cb, listenfd, EV_READ);       //ev_io初始化并开起监听服务
+    ev_io_start(loop, &listen_ctx.io);                              //ev_io启动 循环监听
 
 #ifdef HAVE_LAUNCHD
     if (local_port == NULL)

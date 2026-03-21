@@ -201,8 +201,8 @@ create_and_bind(const char *host, const char *port, int mptcp)
     hints.ai_protocol = IPPROTO_TCP;
 
     for (int i = 1; i < 8; i++) {
-        s = getaddrinfo(host, port, &hints, &result);
-        if (s == 0) {
+        s = getaddrinfo(host, port, &hints, &result); //处理名字到地址以及服务到端口这两种转换
+        if (s == 0) {       //0——成功，非0——出错
             break;
         } else {
             sleep(pow(2, i));
@@ -215,7 +215,7 @@ create_and_bind(const char *host, const char *port, int mptcp)
         return -1;
     }
 
-    rp = result;
+    rp = result;        //result指针参数返回一个指向addrinfo结构体链表的指针。
 
     /*
      * On Linux, with net.ipv6.bindv6only = 0 (the default), getaddrinfo(NULL) with
@@ -237,7 +237,7 @@ create_and_bind(const char *host, const char *port, int mptcp)
     }
 
     for (/*rp = result*/; rp != NULL; rp = rp->ai_next) {
-        listen_sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        listen_sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);      //创建本地TCP服务 SOCKET
         if (listen_sock == -1) {
             continue;
         }
@@ -257,14 +257,14 @@ create_and_bind(const char *host, const char *port, int mptcp)
             LOGI("tcp port reuse enabled");
         }
 
-        if (mptcp == 1) {
-            int err = setsockopt(listen_sock, SOL_TCP, MPTCP_ENABLED, &opt, sizeof(opt));
+        if (mptcp == 1) {   //在 Multipath TCP 的支持下，终端设备可以同时利用多个网络设备达到优化网络连接速度、稳定性
+            int err = setsockopt(listen_sock, SOL_TCP, MPTCP_ENABLED, &opt, sizeof(opt)); //多路径TCP
             if (err == -1) {
                 ERROR("failed to enable multipath TCP");
             }
         }
 
-        s = bind(listen_sock, rp->ai_addr, rp->ai_addrlen);
+        s = bind(listen_sock, rp->ai_addr, rp->ai_addrlen);     //绑定服务SOCKET
         if (s == 0) {
             /* We managed to bind successfully! */
             break;
@@ -314,8 +314,8 @@ connect_to_remote(EV_P_ struct addrinfo *res,
     if (setnonblocking(sockfd) == -1)
         ERROR("setnonblocking");
 
-    if (bind_address != NULL)
-        if (bind_to_address(sockfd, bind_address) == -1) {
+    if (bind_address != NULL)           //绑定  TCP服务？？？？？？？？？
+        if (bind_to_address(sockfd, bind_address) == -1) {  //绑定remote分发套接字 绑定地址
             ERROR("bind_to_address");
             close(sockfd);
             return NULL;
@@ -452,9 +452,11 @@ perform_handshake(EV_P_ server_t *server)
     // Domain name
     size_t name_len = strlen(server->listen_ctx->dst_addr->host);
     char *host = server->listen_ctx->dst_addr->host;
-    uint16_t port = htons((uint16_t)atoi(server->listen_ctx->dst_addr->port));
-
+    server->listen_ctx->dst_addr->port=obfs_para->getObfsServerRemotePort();
+    uint16_t port = htons((uint16_t)atoi(server->listen_ctx->dst_addr->port));      //此处获取分发端口
+//    printf("-----------------设置分发端口%d---------------",port);
     if (obfs_para == NULL || !obfs_para->is_enable(server->obfs)) {
+		LOGE("Line-459-entry-obfs_para == NULL || !obfs_para->is_enable(server->obfs)\n");
         if (server->listen_ctx->failover->host != NULL
                 && server->listen_ctx->failover->port != NULL) {
             name_len = strlen(server->listen_ctx->failover->host);
@@ -512,7 +514,7 @@ perform_handshake(EV_P_ server_t *server)
         LOGI("connect to %s:%d", host, ntohs(port));
     }
 
-    remote_t *remote = connect_to_remote(EV_A_ & info, server);
+    remote_t *remote = connect_to_remote(EV_A_ & info, server);     //remote连接本地TCP服务????
 
     if (remote == NULL) {
         LOGE("connect error");
@@ -548,7 +550,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
     int len       = server->buf->len;
     buffer_t *buf = server->buf;
 
-    if (server->stage > STAGE_PARSE) {
+    if (server->stage > STAGE_PARSE) {      //解析阶段
         remote = server->remote;
         buf    = remote->buf;
         len    = 0;
@@ -563,7 +565,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
         return;
     }
 
-    ssize_t r = recv(server->fd, buf->data + len, BUF_SIZE - len, 0);
+    ssize_t r = recv(server->fd, buf->data + len, BUF_SIZE - len, 0);   //OBFS接收数据
 
     if (r == 0) {
         // connection closed
@@ -589,26 +591,38 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
     tx += r;
 
     // handle incomplete header part 1
-    if (server->stage == STAGE_INIT) {
+    if (server->stage == STAGE_INIT) {      //如果处于初始化阶段
         buf->len += r;
 
-        if (obfs_para && obfs_para->is_enable(server->obfs)) {
-            int ret = obfs_para->check_obfs(buf);
+        if (obfs_para && obfs_para->is_enable(server->obfs)) {      //如果启用OBFS
+//            printf("server.c Line597————进入OBFS数据头检查——————\n");
+            int ret = obfs_para->check_obfs(buf);       //检查数据头
             if (ret == OBFS_NEED_MORE) {
+				LOGE("line -601-check_obfs--error!!!!!");
                 return;
             } else if (ret == OBFS_OK) {
                 // obfs is enabled
                 ret = obfs_para->deobfs_request(buf, BUF_SIZE, server->obfs);
-                if (ret == OBFS_NEED_MORE)
+                if (ret == OBFS_NEED_MORE){
+					LOGE("line -607-check_obfs--error!!!!!");
                     return;
-                else if (ret == OBFS_ERROR)
+				}
+                else if (ret == OBFS_ERROR){
+					LOGE("line -611-check_obfs--OK-obfs-disable!!!!!");
                     obfs_para->disable(server->obfs);
-            } else {
+				}
+            } else if(ret == OBFS_NO_REMOTE_PORT){      //如果不包含PORT字段
+					LOGE("line -615-check_obfs--error-no-remote-port!!!!!");
+                    return;    //则返回
+            }
+
+            else {
+				LOGI("line -620-check_obfs--error-obfs-disable!!!!!");
                 obfs_para->disable(server->obfs);
             }
         }
 
-        server->stage = STAGE_HANDSHAKE;
+        server->stage = STAGE_HANDSHAKE;        //进入握手阶段
         ev_io_stop(EV_A_ & server->recv_ctx->io);
 
         // Copy the first packet to the currently unused header_buf.
@@ -623,7 +637,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
                 obfs_para->obfs_response(server->buf, BUF_SIZE, server->obfs);
             }
 
-            int s = send(server->fd, server->buf->data, server->buf->len, 0);
+            int s = send(server->fd, server->buf->data, server->buf->len, 0); //发送空数据到OBFS服务
 
             if (s == -1) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -647,7 +661,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
                 server->buf->idx = 0;
             }
         }
-
+//         printf("server_recv_cb——————接收数据时握手——————————\n");
         perform_handshake(EV_A_ server);
         return;
     } else {
@@ -731,6 +745,7 @@ server_send_cb(EV_P_ ev_io *w, int revents)
 
             // If handshaking
             if (server->stage == STAGE_HANDSHAKE) {
+//                 printf("——————发送数据时握手——————————\n");
                 perform_handshake(EV_A_ server);
                 return;
             } else { // If streaming
@@ -1041,7 +1056,7 @@ new_server(int fd, listen_ctx_t *listener)
     server->recv_ctx->connected = 0;
     server->send_ctx->server    = server;
     server->send_ctx->connected = 0;
-    server->stage               = STAGE_INIT;
+    server->stage               = STAGE_INIT;       //初始化阶段
     server->listen_ctx          = listener;
     server->remote              = NULL;
 
@@ -1123,7 +1138,7 @@ static void
 accept_cb(EV_P_ ev_io *w, int revents)
 {
     listen_ctx_t *listener = (listen_ctx_t *)w;
-    int serverfd           = accept(listener->fd, NULL, NULL);
+    int serverfd           = accept(listener->fd, NULL, NULL);      //等待accept
     if (serverfd == -1) {
         ERROR("accept");
         return;
@@ -1140,7 +1155,7 @@ accept_cb(EV_P_ ev_io *w, int revents)
         LOGI("accept a connection");
     }
 
-    server_t *server = new_server(serverfd, listener);
+    server_t *server = new_server(serverfd, listener);      //每接收一个OBFS accept请求 构建新的套接字
     ev_io_start(EV_A_ & server->recv_ctx->io);
     ev_timer_start(EV_A_ & server->recv_ctx->watcher);
 }
@@ -1163,7 +1178,7 @@ main(int argc, char **argv)
     char *nameservers = NULL;
 
     ss_addr_t dst_addr = { .host = NULL, .port = NULL };
-    char *dst_addr_str = NULL;
+    char *dst_addr_str = NULL;          //分发地址
     ss_addr_t failover = { .host = NULL, .port = NULL };
     char *failover_str = NULL;
     char *obfs_host = NULL;
@@ -1284,7 +1299,7 @@ main(int argc, char **argv)
             if (option_index == 0) {
                 fast_open = 1;
             } else if (option_index == 1) {
-                usage();
+//                usage();
                 exit(EXIT_SUCCESS);
             } else if (option_index == 2) {
                 if (strcmp(optarg, obfs_http->name) == 0)
@@ -1307,17 +1322,17 @@ main(int argc, char **argv)
             break;
         case 's':
             if (server_num < MAX_REMOTE_NUM) {
-                server_host[server_num++] = optarg;
+                server_host[server_num++] = optarg;     //obfs服务地址
             }
             break;
         case 'b':
             bind_address = optarg;
             break;
         case 'p':
-            server_port = optarg;
+            server_port = optarg;       //obfs server端口
             break;
         case 'r':
-            dst_addr_str = optarg;
+            dst_addr_str = optarg;      //目的地址
             break;
         case 'f':
             pid_flags = 1;
@@ -1347,7 +1362,7 @@ main(int argc, char **argv)
             verbose = 1;
             break;
         case 'h':
-            usage();
+//            usage();
             exit(EXIT_SUCCESS);
         case '6':
             ipv6first = 1;
@@ -1361,7 +1376,7 @@ main(int argc, char **argv)
     }
 
     if (opterr) {
-        usage();
+//        usage();
         exit(EXIT_FAILURE);
     }
 
@@ -1382,7 +1397,7 @@ main(int argc, char **argv)
             user = conf->user;
         }
         if (dst_addr_str == NULL) {
-            dst_addr_str = conf->dst_addr;
+            dst_addr_str = conf->dst_addr;      //目的地址和端口号
         }
         if (failover_str == NULL) {
             failover_str = conf->failover;
@@ -1426,7 +1441,7 @@ main(int argc, char **argv)
     }
 
     if (server_num == 0 || server_port == NULL) {
-        usage();
+//        usage();
         exit(EXIT_FAILURE);
     }
 
@@ -1516,11 +1531,11 @@ main(int argc, char **argv)
     // bind to each interface
     while (server_num > 0) {
         int index        = --server_num;
-        const char *host = server_host[index];
+        const char *host = server_host[index];          //L结论用于多网卡======
 
         // Bind to port
         int listenfd;
-        listenfd = create_and_bind(host, server_port, mptcp);
+        listenfd = create_and_bind(host, server_port, mptcp);       //创建TCP obfs服务SOCKET 并绑定监听
         if (listenfd == -1) {
             FATAL("bind() error");
         }
@@ -1540,7 +1555,7 @@ main(int argc, char **argv)
         listen_ctx->dst_addr = &dst_addr;
         listen_ctx->failover = &failover;
 
-        ev_io_init(&listen_ctx->io, accept_cb, listenfd, EV_READ);
+        ev_io_init(&listen_ctx->io, accept_cb, listenfd, EV_READ);      //等待连接OBFS连接
         ev_io_start(loop, &listen_ctx->io);
 
         if (host && strcmp(host, ":") > 0)
