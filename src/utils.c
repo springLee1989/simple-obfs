@@ -104,7 +104,7 @@ int
 run_as(const char *user)
 {
 #ifndef __MINGW32__
-    if (user[0]) {
+    if (user != NULL && user[0]) {
         /* Convert user to a long integer if it is a non-negative number.
          * -1 means it is a user name. */
         long uid = -1;
@@ -203,6 +203,8 @@ run_as(const char *user)
 char *
 ss_strndup(const char *s, size_t n)
 {
+    if (s == NULL)
+        return NULL;
     size_t len = strlen(s);
     char *ret;
 

@@ -216,12 +216,14 @@ check_http_header(buffer_t *buf)
     char *data = buf->data;
     int len    = buf->len;
 
-    char *lfpos= strchr(data, '\n');
+    char *lfpos = strchr(data, '\n');
     if (lfpos == NULL) return OBFS_NEED_MORE;
     if (len < 15) {
 		printf("http.c-line-222-len<15\n");
 		return OBFS_ERROR;
 	}
+    if (lfpos < data + 9)
+        return OBFS_ERROR;
     if (strncasecmp(lfpos - 9, "HTTP/1.1", 8) != 0){
 		printf("http.c-line-226-it-is-not-http1.1\n");
 		return OBFS_ERROR;
@@ -254,7 +256,9 @@ check_http_header(buffer_t *buf)
 
 
      //检查头是否包含ServerRemotePort字段 新添加
-    int result=get_header("ServerRemotePort:",data, len, &chServerRemotePort);          //检查头是否包含ServerRemotePort字段
+    free(chServerRemotePort);
+    chServerRemotePort = NULL;
+    int result = get_header("ServerRemotePort:", data, len, &chServerRemotePort);  //检查头是否包含ServerRemotePort字段
       printf("Line243————check_http_header————检查头是否包含ServerRemotePort字段 新添加%d--%s——————\n", result, chServerRemotePort);
 	
 
@@ -295,12 +299,13 @@ check_http_header(buffer_t *buf)
                 break;
             }
 
-        result = OBFS_ERROR;
-        if (strncasecmp(hostname, obfs_http->host, result) == 0) {
-            result = OBFS_OK;
+        if ((int)strlen(obfs_http->host) == result
+            && strncasecmp(hostname, obfs_http->host, (size_t)result) == 0) {
+            free(hostname);
+            return OBFS_OK;
         }
         free(hostname);
-        return result;
+        return OBFS_ERROR;
     }
 	else{
 	printf("http.c-line-306-host-is-null!!!!!!!!\n");
@@ -354,9 +359,13 @@ next_header(const char **data, int *len)
         (*data)++;
     }
 
-    /* advanced past the <CR><LF> pair */
-    *data += 2;
-    *len  -= 2;
+    /* advanced past the <CR><LF> pair - only if we have at least 2 bytes and it's \r\n */
+    if (*len >= 2 && (*data)[0] == '\r' && (*data)[1] == '\n') {
+        *data += 2;
+        *len  -= 2;
+    } else if (*len <= 2) {
+        return 0;  /* incomplete header, avoid buffer overrun */
+    }
 
     /* Find the length of the next header */
     header_len = 0;

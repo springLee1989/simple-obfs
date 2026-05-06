@@ -298,7 +298,6 @@ connect_to_remote(EV_P_ struct addrinfo *res,
     sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (sockfd == -1) {
         ERROR("socket");
-        close(sockfd);
         return NULL;
     }
 
@@ -1527,6 +1526,7 @@ main(int argc, char **argv)
 
     // initialize listen context
     listen_ctx_t listen_ctx_list[server_num];
+    int num_listeners = server_num;
 
     // bind to each interface
     while (server_num > 0) {
@@ -1592,7 +1592,7 @@ main(int argc, char **argv)
     }
 
     // Clean up
-    for (int i = 0; i <= server_num; i++) {
+    for (int i = 0; i < num_listeners; i++) {
         listen_ctx_t *listen_ctx = &listen_ctx_list[i];
         ev_io_stop(loop, &listen_ctx->io);
         close(listen_ctx->fd);
