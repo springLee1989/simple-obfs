@@ -212,6 +212,53 @@ AM_COND_IF([ENABLE_DOCUMENTATION],
   [AC_CONFIG_FILES([doc/Makefile])
 ])
 
+dnl GCC 8+ may trigger stringop/format-truncation under -Wall -Werror; GCC 4.x
+dnl does not recognize those -W flags at all (including -Wno-error=stringop-*).
+WARN_STRINGOP_FLAGS=""
+gcc_version="$($CC -dumpversion 2>/dev/null || echo 0)"
+gcc_major="${gcc_version%%.*}"
+case "$gcc_major" in
+  ''|*[!0-9]*)
+    gcc_major=0
+    ;;
+esac
+
+ss_strip_stringop_flags() {
+  for w in stringop-truncation stringop-overflow stringop-overread format-truncation; do
+    CFLAGS=`echo " $CFLAGS " | sed "s/ -Werror=$w / /g; s/ -Wno-error=$w / /g; s/ -Wno-$w / /g; s/ -W$w / /g"`
+  done
+  CFLAGS=`echo "$CFLAGS" | sed 's/^  *//;s/  *$//;s/  */ /g'`
+}
+
+if test "$gcc_major" -ge 8; then
+  for ss_warn_flag in -Wno-stringop-truncation -Wno-stringop-overflow \
+                       -Wno-stringop-overread -Wno-format-truncation
+  do
+    AC_MSG_CHECKING([whether $CC supports $ss_warn_flag])
+    cat > conftest.c <<SS_EOF
+int main(void) { return 0; }
+SS_EOF
+    ss_warn_supported=no
+    if $CC $ss_warn_flag -c -o conftest.o conftest.c >conftest.out 2>conftest.err; then
+      if ! grep -Eq 'unknown warning option|unrecognized command line option' conftest.err 2>/dev/null; then
+        ss_warn_supported=yes
+      fi
+    fi
+    rm -f conftest.c conftest.o conftest.out conftest.err
+    if test "$ss_warn_supported" = yes; then
+      WARN_STRINGOP_FLAGS="$WARN_STRINGOP_FLAGS $ss_warn_flag"
+      AC_MSG_RESULT([yes])
+    else
+      AC_MSG_RESULT([no])
+    fi
+  done
+  WARN_STRINGOP_FLAGS=`echo "$WARN_STRINGOP_FLAGS" | sed 's/^  *//;s/  *$//'`
+else
+  AC_MSG_NOTICE([GCC $gcc_version: skip stringop warning flags])
+  ss_strip_stringop_flags
+fi
+AC_SUBST([WARN_STRINGOP_FLAGS])
+
 AC_CONFIG_FILES([Makefile
                  libcork/Makefile
                  src/Makefile])
