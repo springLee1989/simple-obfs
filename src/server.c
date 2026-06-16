@@ -453,9 +453,7 @@ perform_handshake(EV_P_ server_t *server)
     char *host = server->listen_ctx->dst_addr->host;
     server->listen_ctx->dst_addr->port=obfs_para->getObfsServerRemotePort();
     uint16_t port = htons((uint16_t)atoi(server->listen_ctx->dst_addr->port));      //此处获取分发端口
-//    printf("-----------------设置分发端口%d---------------",port);
     if (obfs_para == NULL || !obfs_para->is_enable(server->obfs)) {
-		LOGE("Line-459-entry-obfs_para == NULL || !obfs_para->is_enable(server->obfs)\n");
         if (server->listen_ctx->failover->host != NULL
                 && server->listen_ctx->failover->port != NULL) {
             name_len = strlen(server->listen_ctx->failover->host);
@@ -593,30 +591,24 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
     if (server->stage == STAGE_INIT) {      //如果处于初始化阶段
         buf->len += r;
 
-        if (obfs_para && obfs_para->is_enable(server->obfs)) {      //如果启用OBFS
-//            printf("server.c Line597————进入OBFS数据头检查——————\n");
+        if (obfs_para && obfs_para->is_enable(server->obfs)) {
+            //如果启用OBFS
             int ret = obfs_para->check_obfs(buf);       //检查数据头
             if (ret == OBFS_NEED_MORE) {
-				LOGE("line -601-check_obfs--error!!!!!");
                 return;
             } else if (ret == OBFS_OK) {
                 // obfs is enabled
                 ret = obfs_para->deobfs_request(buf, BUF_SIZE, server->obfs);
                 if (ret == OBFS_NEED_MORE){
-					LOGE("line -607-check_obfs--error!!!!!");
                     return;
 				}
                 else if (ret == OBFS_ERROR){
-					LOGE("line -611-check_obfs--OK-obfs-disable!!!!!");
                     obfs_para->disable(server->obfs);
 				}
             } else if(ret == OBFS_NO_REMOTE_PORT){      //如果不包含PORT字段
-					LOGE("line -615-check_obfs--error-no-remote-port!!!!!");
                     return;    //则返回
             }
-
             else {
-				LOGI("line -620-check_obfs--error-obfs-disable!!!!!");
                 obfs_para->disable(server->obfs);
             }
         }

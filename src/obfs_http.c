@@ -120,7 +120,6 @@ obfs_http_request(buffer_t *buf, size_t cap, obfs_t *obfs)
     rand_bytes(key, 16);
     base64_encode(b64, 64, key, 16);
 
-//    printf("obfs_http_request——将数据打包远程端口号%s——————\n",chServerRemotePort);
     size_t obfs_len =
         snprintf(http_header, sizeof(http_header), http_request_template, obfs_http->method,
                  obfs_http->uri, host_port, major_version, minor_version, b64, buf->len,chServerRemotePort);        //添加chServerRemotePort字段
@@ -208,8 +207,6 @@ deobfs_http_header(buffer_t *buf, size_t cap, obfs_t *obfs)
 
     return err;
 }
-
-
 static int
 check_http_header(buffer_t *buf)
 {
@@ -233,37 +230,12 @@ check_http_header(buffer_t *buf)
 		printf("http.c-line-231-method-error!!!!!!!!\n");
         return OBFS_ERROR;
 	}
-/*
-    {
-        char *protocol;
-        int result = get_header("Upgrade:", data, len, &protocol);
-        if (result < 0) {
-            if (result == -1)
-                return OBFS_NEED_MORE;
-            else
-			{
-				printf("http.c-line-243-no-Upgrade:!!!!!!!!\n");
-                return OBFS_ERROR;
-			}
-        }
-        if (strncmp(protocol, "websocket", result) != 0) {
-            free(protocol);
-            return OBFS_ERROR;
-        } else {
-            free(protocol);
-        }
-    }*/
-
 
      //检查头是否包含ServerRemotePort字段 新添加
     free(chServerRemotePort);
     chServerRemotePort = NULL;
     int result = get_header("ServerRemotePort:", data, len, &chServerRemotePort);  //检查头是否包含ServerRemotePort字段
-      printf("Line243————check_http_header————检查头是否包含ServerRemotePort字段 新添加%d--%s——————\n", result, chServerRemotePort);
-	
-
     if (result < 0) {       //如果不包含返回提示标志
-			printf("http.c-line-262-no-ServerRemotePort:!!!!!!!!\n");
         if (result == -1)
             return OBFS_NEED_MORE;
         else
@@ -282,7 +254,6 @@ check_http_header(buffer_t *buf)
             if (result == -1)
                 return OBFS_NEED_MORE;
             else{
-				printf("http.c-line-281-no-Host:!!!!!!!!\n");
                 return OBFS_ERROR;
 			}
         }
@@ -307,9 +278,6 @@ check_http_header(buffer_t *buf)
         free(hostname);
         return OBFS_ERROR;
     }
-	else{
-	printf("http.c-line-306-host-is-null!!!!!!!!\n");
-	}
 
     return OBFS_OK;
 }
